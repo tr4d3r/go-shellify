@@ -30,3 +30,23 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Claude Code configuration
+CLAUDE.md
+
+# Project documentation (development only)
+prd.md
+
+# Build artifacts
+bin/
+dist/
+
+# TaskMaster configuration 
+.taskfile/
+
+# Local registry cache (future)
+.shellify/
+
+# OS specific
+.DS_Store
+Thumbs.db
