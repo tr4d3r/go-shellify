@@ -43,7 +43,12 @@ func (v *URLValidator) ValidateURL(rawURL string) error {
 
 // validateURLFormat validates the URL format and checks if it's a valid git repository URL
 func (v *URLValidator) validateURLFormat(rawURL string) error {
-	// Parse URL
+	// Check for SSH URL format first (git@host:path)
+	if strings.HasPrefix(rawURL, "git@") {
+		return v.validateSSHURL(rawURL)
+	}
+
+	// Parse URL for standard schemes
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL: %w", err)
@@ -228,12 +233,19 @@ func (v *URLValidator) validateGenericGitURL(pathParts []string) error {
 
 // checkAccessibility performs a basic connectivity check to the repository
 func (v *URLValidator) checkAccessibility(rawURL string) error {
+	// For SSH URLs (git@host:path), we can't easily check accessibility without SSH keys
+	if strings.HasPrefix(rawURL, "git@") {
+		// For SSH URLs, we'll skip the accessibility check
+		// In a real implementation, we might try to resolve the host
+		return nil
+	}
+
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL for accessibility check: %w", err)
 	}
 
-	// For SSH URLs, we can't easily check accessibility without SSH keys
+	// For SSH URLs with git:// scheme, we can't easily check accessibility without SSH keys
 	if parsedURL.Scheme == "git" {
 		// For SSH URLs, we'll skip the accessibility check
 		// In a real implementation, we might try to resolve the host
