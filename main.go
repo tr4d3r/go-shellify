@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/griffin/go-shellify/cmd/shellify"
+	"github.com/griffin/go-shellify/cmd"
 )
 
 func main() {
-	if err := shellify.Execute(); err != nil {
+	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
