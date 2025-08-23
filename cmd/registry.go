@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
 
 	"github.com/griffin/go-shellify/internal/errors"
 	"github.com/griffin/go-shellify/internal/logger"
+	"github.com/griffin/go-shellify/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -24,18 +28,56 @@ Use this command to add, list, remove, and validate registries.`,
 
 // registryAddCmd represents the registry add command
 var registryAddCmd = &cobra.Command{
-	Use:   "add <url>",
+	Use:   "add <url> [name]",
 	Short: "Add a new registry",
-	Long:  `Add a new shellify registry from a git repository URL.`,
-	Args:  cobra.ExactArgs(1),
+	Long: `Add a new shellify registry from a git repository URL.
+
+The URL will be validated to ensure it points to a valid and accessible git repository.
+If no name is provided, one will be generated from the repository URL.
+
+Examples:
+  go-shellify registry add https://github.com/user/shellify-registry
+  go-shellify registry add https://github.com/user/registry my-registry
+  go-shellify registry add git@github.com:user/registry.git`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
-		logger.Info("Adding registry: %s", url)
+		var name string
 		
-		// TODO: Implement registry add functionality (subtask 1.2.1)
-		// For now, just demonstrate error handling
-		return errors.New(errors.ErrTypeSystem, "Registry add functionality not yet implemented").
-			WithContext("url", url)
+		if len(args) > 1 {
+			name = args[1]
+		} else {
+			// Generate name from URL
+			name = generateRegistryName(url)
+		}
+		
+		logger.Info("Adding registry: %s (name: %s)", url, name)
+		
+		// Validate URL format and accessibility
+		logger.Debug("Validating registry URL...")
+		validator := registry.NewURLValidator()
+		if err := validator.ValidateURL(url); err != nil {
+			logger.Error("URL validation failed: %v", err)
+			return errors.Wrap(err, errors.ErrTypeValidation, "Invalid registry URL").
+				WithContext("url", url).
+				WithContext("name", name)
+		}
+		logger.Debug("URL validation passed")
+		
+		// Add registry to configuration
+		logger.Debug("Adding registry to configuration...")
+		if err := ConfigManager.AddRegistry(url, name); err != nil {
+			logger.Error("Failed to add registry: %v", err)
+			return errors.Wrap(err, errors.ErrTypeConfig, "Failed to add registry").
+				WithContext("url", url).
+				WithContext("name", name)
+		}
+		
+		logger.Info("Registry '%s' added successfully", name)
+		fmt.Printf("Registry '%s' has been added successfully.\n", name)
+		fmt.Printf("URL: %s\n", url)
+		
+		return nil
 	},
 }
 
@@ -98,6 +140,68 @@ var registryValidateCmd = &cobra.Command{
 		fmt.Printf("Validating registry: %s\n", url)
 		fmt.Println("Registry validation functionality not yet implemented")
 	},
+}
+
+// generateRegistryName generates a registry name from a URL
+func generateRegistryName(rawURL string) string {
+	// Parse the URL
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		// If parsing fails, use the raw URL as base
+		return sanitizeName(rawURL)
+	}
+
+	var name string
+
+	// Handle SSH URLs (git@host:path format)
+	if parsedURL.Scheme == "git" || strings.Contains(rawURL, "git@") {
+		// Extract from SSH format: git@github.com:user/repo.git
+		parts := strings.Split(rawURL, ":")
+		if len(parts) >= 2 {
+			pathPart := parts[len(parts)-1]
+			name = filepath.Base(pathPart)
+		}
+	} else if parsedURL.Path != "" {
+		// Handle HTTPS URLs - use the repository name from path
+		name = filepath.Base(parsedURL.Path)
+	}
+
+	// If we couldn't extract a name, use the host
+	if name == "" || name == "/" || name == "." {
+		if parsedURL.Host != "" {
+			name = parsedURL.Host
+		} else {
+			name = "registry"
+		}
+	}
+
+	// Remove .git suffix and sanitize
+	name = strings.TrimSuffix(name, ".git")
+	return sanitizeName(name)
+}
+
+// sanitizeName ensures the name is valid for use as a registry identifier
+func sanitizeName(name string) string {
+	// Replace invalid characters with hyphens
+	name = strings.ReplaceAll(name, "/", "-")
+	name = strings.ReplaceAll(name, "@", "-")
+	name = strings.ReplaceAll(name, ":", "-")
+	name = strings.ReplaceAll(name, " ", "-")
+	
+	// Remove multiple consecutive hyphens
+	for strings.Contains(name, "--") {
+		name = strings.ReplaceAll(name, "--", "-")
+	}
+	
+	// Trim hyphens from start and end
+	name = strings.Trim(name, "-")
+	
+	// Ensure name is not empty
+	if name == "" {
+		name = "registry"
+	}
+	
+	return name
 }
 
 func init() {
