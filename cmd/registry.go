@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/griffin/go-shellify/internal/errors"
+	"github.com/griffin/go-shellify/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -26,11 +28,14 @@ var registryAddCmd = &cobra.Command{
 	Short: "Add a new registry",
 	Long:  `Add a new shellify registry from a git repository URL.`,
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
+		logger.Info("Adding registry: %s", url)
+		
 		// TODO: Implement registry add functionality (subtask 1.2.1)
-		fmt.Printf("Adding registry: %s\n", url)
-		fmt.Println("Registry add functionality not yet implemented")
+		// For now, just demonstrate error handling
+		return errors.New(errors.ErrTypeSystem, "Registry add functionality not yet implemented").
+			WithContext("url", url)
 	},
 }
 
@@ -39,10 +44,31 @@ var registryListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all registries",
 	Long:  `List all configured shellify registries.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement registry list functionality (subtask 1.2.4)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger.Debug("Listing configured registries")
+		
+		registries, err := ConfigManager.ListRegistries()
+		if err != nil {
+			return errors.Wrap(err, errors.ErrTypeConfig, "Failed to list registries")
+		}
+		
+		if len(registries) == 0 {
+			fmt.Println("No registries configured")
+			fmt.Println("Use 'go-shellify registry add <url>' to add a registry")
+			return nil
+		}
+		
 		fmt.Println("Configured registries:")
-		fmt.Println("Registry list functionality not yet implemented")
+		for _, reg := range registries {
+			fmt.Printf("  - %s (%s)\n", reg.Name, reg.URL)
+			if reg.LastSync.IsZero() {
+				fmt.Println("    Never synced")
+			} else {
+				fmt.Printf("    Last synced: %s\n", reg.LastSync.Format("2006-01-02 15:04:05"))
+			}
+		}
+		
+		return nil
 	},
 }
 

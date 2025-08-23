@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/griffin/go-shellify/internal/config"
+	"github.com/griffin/go-shellify/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -60,14 +61,18 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set
 func initConfig() {
+	// Set up logging based on verbose flag
+	logger.SetVerbose(verboseFlag)
+	
 	// Initialize configuration manager
 	ConfigManager = config.NewManager(configFile)
+	logger.Debug("Using config file: %s", configFile)
 	
 	// Load configuration
 	if err := ConfigManager.Load(); err != nil {
-		// Configuration errors are non-fatal, just log them when verbose
-		if verboseFlag {
-			fmt.Printf("Warning: Failed to load configuration: %v\n", err)
-		}
+		// Configuration errors are non-fatal, just log them
+		logger.Warn("Failed to load configuration: %v", err)
+	} else {
+		logger.Debug("Configuration loaded successfully")
 	}
 }
