@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/griffin/go-shellify/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +16,9 @@ var (
 	// Global flags
 	verboseFlag bool
 	configFile  string
+	
+	// ConfigManager is the global configuration manager
+	ConfigManager *config.Manager
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -56,6 +60,14 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set
 func initConfig() {
-	// TODO: Implement configuration loading
-	// This will be implemented in subtask 1.1.2
+	// Initialize configuration manager
+	ConfigManager = config.NewManager(configFile)
+	
+	// Load configuration
+	if err := ConfigManager.Load(); err != nil {
+		// Configuration errors are non-fatal, just log them when verbose
+		if verboseFlag {
+			fmt.Printf("Warning: Failed to load configuration: %v\n", err)
+		}
+	}
 }
