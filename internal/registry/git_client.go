@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -157,25 +158,9 @@ type RepositoryInfo struct {
 
 // parseUnixTimestamp parses a unix timestamp string to time.Time
 func parseUnixTimestamp(timestampStr string) (time.Time, error) {
-	timestamp, err := parseIntFromString(timestampStr)
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 	return time.Unix(timestamp, 0), nil
-}
-
-// parseIntFromString parses an integer from string
-func parseIntFromString(s string) (int64, error) {
-	var result int64
-	var err error
-	
-	// Simple integer parsing without external dependencies
-	for i, r := range s {
-		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("invalid character at position %d: %c", i, r)
-		}
-		result = result*10 + int64(r-'0')
-	}
-	
-	return result, err
 }

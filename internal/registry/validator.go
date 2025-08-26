@@ -276,12 +276,13 @@ func (v *URLValidator) checkHTTPSAccessibility(rawURL string) error {
 func (v *URLValidator) buildGitEndpoints(rawURL string) []string {
 	endpoints := []string{}
 	baseURL := strings.TrimSuffix(rawURL, ".git")
+	hasGitSuffix := strings.HasSuffix(rawURL, ".git")
 	
 	// Try the original URL first
 	endpoints = append(endpoints, rawURL)
 	
 	// If original URL doesn't have .git, try with .git suffix
-	if !strings.HasSuffix(rawURL, ".git") {
+	if !hasGitSuffix {
 		endpoints = append(endpoints, baseURL+".git")
 	}
 
@@ -289,8 +290,8 @@ func (v *URLValidator) buildGitEndpoints(rawURL string) []string {
 	endpoints = append(endpoints, baseURL+".git/info/refs")
 	endpoints = append(endpoints, baseURL+"/info/refs")
 
-	// Try the base repository page (only if different from original)
-	if baseURL != rawURL {
+	// Try the base repository page (only if original had .git suffix)
+	if hasGitSuffix {
 		endpoints = append(endpoints, baseURL)
 	}
 
