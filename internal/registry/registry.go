@@ -3,11 +3,8 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -41,6 +38,7 @@ type Module struct {
 type Client struct {
 	configDir string
 	registries []Registry
+	gitClient *GitClient
 }
 
 // NewClient creates a new registry client
@@ -55,8 +53,12 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	cacheDir := filepath.Join(configDir, "cache")
+	gitClient := NewGitClient(cacheDir)
+
 	client := &Client{
 		configDir: configDir,
+		gitClient: gitClient,
 	}
 
 	if err := client.loadRegistries(); err != nil {
@@ -66,13 +68,8 @@ func NewClient() (*Client, error) {
 	return client, nil
 }
 
-// AddRegistry adds a new registry after verification
+// AddRegistry adds a new registry after verification and cloning
 func (c *Client) AddRegistry(url, name string) error {
-	// Verify registry is accessible and valid
-	if err := c.VerifyRegistry(url); err != nil {
-		return fmt.Errorf("registry verification failed: %w", err)
-	}
-
 	// Check if registry already exists
 	for _, reg := range c.registries {
 		if reg.URL == url {
@@ -83,11 +80,24 @@ func (c *Client) AddRegistry(url, name string) error {
 		}
 	}
 
-	// Add registry
+	// Clone the repository
+	if err := c.gitClient.CloneRepository(url, name); err != nil {
+		return fmt.Errorf("failed to clone registry: %w", err)
+	}
+
+	// Verify the cloned registry has valid structure
+	if err := c.verifyLocalRegistry(name); err != nil {
+		// Clean up the failed clone
+		c.gitClient.RemoveRepository(name)
+		return fmt.Errorf("registry structure validation failed: %w", err)
+	}
+
+	// Add registry to configuration
 	registry := Registry{
-		URL:     url,
-		Name:    name,
-		AddedAt: time.Now(),
+		URL:      url,
+		Name:     name,
+		AddedAt:  time.Now(),
+		LastSync: time.Now(),
 	}
 
 	c.registries = append(c.registries, registry)
@@ -98,6 +108,13 @@ func (c *Client) AddRegistry(url, name string) error {
 func (c *Client) RemoveRegistry(identifier string) error {
 	for i, reg := range c.registries {
 		if reg.Name == identifier || reg.URL == identifier {
+			// Remove the git repository from cache
+			if err := c.gitClient.RemoveRepository(reg.Name); err != nil {
+				// Log error but continue with registry removal
+				fmt.Printf("Warning: failed to remove cached repository: %v\n", err)
+			}
+			
+			// Remove from configuration
 			c.registries = append(c.registries[:i], c.registries[i+1:]...)
 			return c.saveRegistries()
 		}
@@ -110,70 +127,105 @@ func (c *Client) ListRegistries() []Registry {
 	return c.registries
 }
 
-// VerifyRegistry checks if a registry URL is accessible and has valid structure
-func (c *Client) VerifyRegistry(url string) error {
-	// Ensure URL ends with index.json or add it
-	indexURL := url
-	if !strings.HasSuffix(url, "index.json") {
-		if !strings.HasSuffix(url, "/") {
-			indexURL += "/"
-		}
-		indexURL += "index.json"
+// verifyLocalRegistry checks if a locally cloned registry has valid structure
+func (c *Client) verifyLocalRegistry(name string) error {
+	repoPath := c.gitClient.GetRepositoryPath(name)
+	indexFile := filepath.Join(repoPath, "index.json")
+
+	// Check if index.json exists
+	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
+		return fmt.Errorf("registry index.json not found")
 	}
 
-	// Try to fetch the index.json
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(indexURL)
-	if err != nil {
-		return fmt.Errorf("failed to fetch registry index: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("registry index returned status %d", resp.StatusCode)
-	}
-
-	// Try to parse as JSON
-	var index RegistryIndex
-	body, err := io.ReadAll(resp.Body)
+	// Try to parse the index.json
+	data, err := os.ReadFile(indexFile)
 	if err != nil {
 		return fmt.Errorf("failed to read registry index: %w", err)
 	}
 
-	if err := json.Unmarshal(body, &index); err != nil {
+	var index RegistryIndex
+	if err := json.Unmarshal(data, &index); err != nil {
 		return fmt.Errorf("invalid registry index JSON: %w", err)
+	}
+
+	// Basic validation - registry should have a name
+	if index.Name == "" {
+		return fmt.Errorf("registry index must have a name field")
 	}
 
 	return nil
 }
 
-// GetRegistryIndex fetches and parses the index for a given registry
-func (c *Client) GetRegistryIndex(registryURL string) (*RegistryIndex, error) {
-	indexURL := registryURL
-	if !strings.HasSuffix(registryURL, "index.json") {
-		if !strings.HasSuffix(registryURL, "/") {
-			indexURL += "/"
+// GetRegistryIndex loads and parses the index for a given registry by name
+func (c *Client) GetRegistryIndex(registryName string) (*RegistryIndex, error) {
+	// Find the registry
+	var registry *Registry
+	for _, reg := range c.registries {
+		if reg.Name == registryName {
+			registry = &reg
+			break
 		}
-		indexURL += "index.json"
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(indexURL)
+	if registry == nil {
+		return nil, fmt.Errorf("registry not found: %s", registryName)
+	}
+
+	// Get the local path and read index.json
+	repoPath := c.gitClient.GetRepositoryPath(registry.Name)
+	indexFile := filepath.Join(repoPath, "index.json")
+
+	data, err := os.ReadFile(indexFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch registry index: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry index returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to read registry index: %w", err)
 	}
 
 	var index RegistryIndex
-	if err := json.NewDecoder(resp.Body).Decode(&index); err != nil {
+	if err := json.Unmarshal(data, &index); err != nil {
 		return nil, fmt.Errorf("failed to decode registry index: %w", err)
 	}
 
 	return &index, nil
+}
+
+// SyncRegistry updates a registry by pulling latest changes
+func (c *Client) SyncRegistry(name string) error {
+	// Find the registry
+	var registryIndex int = -1
+	for i, reg := range c.registries {
+		if reg.Name == name {
+			registryIndex = i
+			break
+		}
+	}
+
+	if registryIndex == -1 {
+		return fmt.Errorf("registry not found: %s", name)
+	}
+
+	// Check if repository is cloned
+	if !c.gitClient.IsRepositoryCloned(name) {
+		// Repository not cloned, clone it
+		registry := c.registries[registryIndex]
+		if err := c.gitClient.CloneRepository(registry.URL, name); err != nil {
+			return fmt.Errorf("failed to clone registry during sync: %w", err)
+		}
+	} else {
+		// Update existing repository
+		repoPath := c.gitClient.GetRepositoryPath(name)
+		if err := c.gitClient.updateRepository(repoPath); err != nil {
+			return fmt.Errorf("failed to update registry: %w", err)
+		}
+	}
+
+	// Verify the registry structure after sync
+	if err := c.verifyLocalRegistry(name); err != nil {
+		return fmt.Errorf("registry validation failed after sync: %w", err)
+	}
+
+	// Update last sync time
+	c.registries[registryIndex].LastSync = time.Now()
+	return c.saveRegistries()
 }
 
 // loadRegistries loads registries from config file

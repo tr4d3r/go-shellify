@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -59,14 +60,12 @@ func (v *URLValidator) validateURLFormat(rawURL string) error {
 		return fmt.Errorf("URL must include a scheme (https:// or git@)")
 	}
 
-	// Support HTTPS and SSH protocols
+	// Support HTTPS protocols
 	switch parsedURL.Scheme {
 	case "https":
 		return v.validateHTTPSURL(parsedURL)
-	case "git":
-		return v.validateSSHURL(rawURL)
 	default:
-		return fmt.Errorf("unsupported URL scheme '%s', supported schemes: https, git (SSH)", parsedURL.Scheme)
+		return fmt.Errorf("unsupported URL scheme '%s', supported schemes: https", parsedURL.Scheme)
 	}
 }
 
@@ -245,12 +244,7 @@ func (v *URLValidator) checkAccessibility(rawURL string) error {
 		return fmt.Errorf("failed to parse URL for accessibility check: %w", err)
 	}
 
-	// For SSH URLs with git:// scheme, we can't easily check accessibility without SSH keys
-	if parsedURL.Scheme == "git" {
-		// For SSH URLs, we'll skip the accessibility check
-		// In a real implementation, we might try to resolve the host
-		return nil
-	}
+	// Note: SSH URLs (git@host:path) are handled above and skip parsing
 
 	// For HTTPS URLs, try to access the repository
 	if parsedURL.Scheme == "https" {
@@ -281,31 +275,35 @@ func (v *URLValidator) checkHTTPSAccessibility(rawURL string) error {
 // buildGitEndpoints generates possible git repository endpoints to test
 func (v *URLValidator) buildGitEndpoints(rawURL string) []string {
 	endpoints := []string{}
-
-	// Remove .git suffix and add various possible endpoints
 	baseURL := strings.TrimSuffix(rawURL, ".git")
 	
-	// Try the direct URL
+	// Try the original URL first
 	endpoints = append(endpoints, rawURL)
 	
-	// Try with .git suffix if not present
+	// If original URL doesn't have .git, try with .git suffix
 	if !strings.HasSuffix(rawURL, ".git") {
 		endpoints = append(endpoints, baseURL+".git")
 	}
 
-	// Try git info refs endpoint (standard git HTTP endpoint)
+	// Try git info refs endpoints (standard git HTTP endpoints)
 	endpoints = append(endpoints, baseURL+".git/info/refs")
 	endpoints = append(endpoints, baseURL+"/info/refs")
 
-	// Try the base repository page
-	endpoints = append(endpoints, baseURL)
+	// Try the base repository page (only if different from original)
+	if baseURL != rawURL {
+		endpoints = append(endpoints, baseURL)
+	}
 
 	return endpoints
 }
 
 // testEndpoint tests if an endpoint is accessible
 func (v *URLValidator) testEndpoint(endpoint string) error {
-	req, err := http.NewRequest("GET", endpoint, nil)
+	// Create context with timeout for the request
+	ctx, cancel := context.WithTimeout(context.Background(), v.httpTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
