@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -335,7 +336,7 @@ func TestStructureValidator_ValidateStructure(t *testing.T) {
 					t.Error("ValidateStructure() expected error but got none")
 					return
 				}
-				if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("ValidateStructure() error = %v, expected to contain %q", err, tt.errMsg)
 				}
 			} else {

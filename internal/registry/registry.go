@@ -27,11 +27,80 @@ type RegistryIndex struct {
 
 // Module represents a module in the registry
 type Module struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Version     string `json:"version,omitempty"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description,omitempty"`
+	Version      string        `json:"version,omitempty"`
+	Path         string        `json:"path,omitempty"`
+	Shell        string        `json:"shell,omitempty"` // Legacy field for backward compatibility
+	Author       string        `json:"author,omitempty"`
+	Category     string        `json:"category,omitempty"`
+	Dependencies []string      `json:"dependencies,omitempty"`
+	Conflicts    []string      `json:"conflicts,omitempty"`
+	Platforms    []string      `json:"platforms,omitempty"`    // darwin, linux, windows
+	Shells       []string      `json:"shells,omitempty"`       // bash, zsh, fish, powershell
+	Environment  []Environment `json:"environment,omitempty"`   // Environment variables
+	Aliases      []Alias       `json:"aliases,omitempty"`      // Shell aliases
+	Functions    []Function    `json:"functions,omitempty"`    // Shell functions
+	PathEntries  []PathEntry   `json:"path_entries,omitempty"` // PATH modifications
+	Files        []File        `json:"files,omitempty"`        // Files to source/execute
+	Checks       []Check       `json:"checks,omitempty"`       // System requirements
+}
+
+// Environment represents an environment variable
+type Environment struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Export bool   `json:"export,omitempty"`
+}
+
+// Alias represents a shell alias
+type Alias struct {
+	Name    string `json:"name"`
+	Command string `json:"command"`
+}
+
+// Function represents a shell function
+type Function struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Commands    []string `json:"commands"`
+	Parameters  []string `json:"parameters,omitempty"`
+	Shell       string   `json:"shell,omitempty"`
+}
+
+// PathEntry represents a PATH modification
+type PathEntry struct {
+	Directory   string `json:"directory,omitempty"`
 	Path        string `json:"path,omitempty"`
-	Shell       string `json:"shell,omitempty"`
+	Prepend     bool   `json:"prepend,omitempty"`
+	Description string `json:"description,omitempty"`
+	Priority    int    `json:"priority,omitempty"`
+}
+
+// File represents a file to be created or managed
+type File struct {
+	Path    string `json:"path"`
+	Content string `json:"content,omitempty"`
+	Source  bool   `json:"source,omitempty"`
+	Execute bool   `json:"execute,omitempty"`
+	Mode    string `json:"mode,omitempty"`
+	Owner   string `json:"owner,omitempty"`
+	Group   string `json:"group,omitempty"`
+	Backup  bool   `json:"backup,omitempty"`
+}
+
+// Check represents a system check or requirement
+type Check struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type"` // command, file, directory, env
+	Command     string   `json:"command,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	Variable    string   `json:"variable,omitempty"`
+	Expected    string   `json:"expected,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	OnSuccess   []string `json:"on_success,omitempty"`
+	OnFailure   []string `json:"on_failure,omitempty"`
 }
 
 // Client manages registry operations
