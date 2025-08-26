@@ -396,18 +396,4 @@ func writeJSON(filename string, data interface{}) error {
 	return encoder.Encode(data)
 }
 
-func containsString(str, substr string) bool {
-	return len(str) >= len(substr) && (str == substr || len(substr) == 0 || 
-		(len(str) > len(substr) && (str[:len(substr)] == substr || 
-		str[len(str)-len(substr):] == substr || 
-		findInString(str, substr))))
-}
-
-func findInString(str, substr string) bool {
-	for i := 0; i <= len(str)-len(substr); i++ {
-		if str[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
+// (containsString and findInString helpers removed; use strings.Contains instead)
