@@ -158,14 +158,52 @@ var registryRemoveCmd = &cobra.Command{
 // registryValidateCmd represents the registry validate command
 var registryValidateCmd = &cobra.Command{
 	Use:   "validate <url>",
-	Short: "Validate a registry",
-	Long:  `Validate that a git repository is a valid shellify registry.`,
+	Short: "Validate a registry structure",
+	Long:  `Validate that a git repository is a valid shellify registry by cloning it temporarily and checking its structure.`,
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
-		// TODO: Implement registry validation functionality (subtask 1.2.3)
-		fmt.Printf("Validating registry: %s\n", url)
-		fmt.Println("Registry validation functionality not yet implemented")
+		
+		logger.Info("Validating registry structure: %s", url)
+		
+		// Validate URL format first
+		logger.Debug("Validating registry URL format...")
+		validator := registry.NewURLValidator()
+		if err := validator.ValidateURL(url); err != nil {
+			logger.Error("URL validation failed: %v", err)
+			return errors.Wrap(err, errors.ErrTypeValidation, "Invalid registry URL").
+				WithContext("url", url)
+		}
+		logger.Debug("URL validation passed")
+		
+		// Create temporary name for validation
+		tempName := "temp-validation-" + generateRegistryName(url)
+		
+		// Create registry client and clone temporarily
+		logger.Debug("Cloning repository for validation...")
+		client, err := registry.NewClient()
+		if err != nil {
+			logger.Error("Failed to create registry client: %v", err)
+			return errors.Wrap(err, errors.ErrTypeConfig, "Failed to create registry client").
+				WithContext("url", url)
+		}
+		
+		// Clone and validate (this will be cleaned up if validation fails)
+		if err := client.AddRegistry(url, tempName); err != nil {
+			logger.Error("Registry validation failed: %v", err)
+			fmt.Printf("❌ Registry validation failed: %v\n", err)
+			return nil // Don't return error since we provided user feedback
+		}
+		
+		// Validation passed, clean up the temporary registry
+		if err := client.RemoveRegistry(tempName); err != nil {
+			logger.Warn("Failed to clean up temporary registry: %v", err)
+		}
+		
+		logger.Info("Registry validation completed successfully")
+		fmt.Printf("✅ Registry '%s' is valid and follows shellify registry structure.\n", url)
+		
+		return nil
 	},
 }
 

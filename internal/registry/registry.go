@@ -130,27 +130,11 @@ func (c *Client) ListRegistries() []Registry {
 // verifyLocalRegistry checks if a locally cloned registry has valid structure
 func (c *Client) verifyLocalRegistry(name string) error {
 	repoPath := c.gitClient.GetRepositoryPath(name)
-	indexFile := filepath.Join(repoPath, "index.json")
-
-	// Check if index.json exists
-	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
-		return fmt.Errorf("registry index.json not found")
-	}
-
-	// Try to parse the index.json
-	data, err := os.ReadFile(indexFile)
-	if err != nil {
-		return fmt.Errorf("failed to read registry index: %w", err)
-	}
-
-	var index RegistryIndex
-	if err := json.Unmarshal(data, &index); err != nil {
-		return fmt.Errorf("invalid registry index JSON: %w", err)
-	}
-
-	// Basic validation - registry should have a name
-	if index.Name == "" {
-		return fmt.Errorf("registry index must have a name field")
+	
+	// Use comprehensive structure validator
+	validator := NewStructureValidator(repoPath)
+	if err := validator.ValidateStructure(); err != nil {
+		return fmt.Errorf("registry structure validation failed: %w", err)
 	}
 
 	return nil
