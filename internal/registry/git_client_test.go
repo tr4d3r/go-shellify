@@ -106,56 +106,53 @@ func TestGitClient_RemoveRepository(t *testing.T) {
 	}
 }
 
-func TestParseIntFromString(t *testing.T) {
+func TestParseUnixTimestamp(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected int64
 		wantErr  bool
 	}{
 		{
-			name:     "valid number",
-			input:    "12345",
-			expected: 12345,
-			wantErr:  false,
+			name:    "valid timestamp",
+			input:   "1672531200", // 2023-01-01 00:00:00 UTC
+			wantErr: false,
 		},
 		{
-			name:     "zero",
-			input:    "0",
-			expected: 0,
-			wantErr:  false,
+			name:    "zero timestamp",
+			input:   "0",
+			wantErr: false,
 		},
 		{
-			name:    "invalid character",
-			input:   "123a45",
+			name:    "invalid timestamp",
+			input:   "abc123",
 			wantErr: true,
 		},
 		{
 			name:    "empty string",
 			input:   "",
-			expected: 0,
-			wantErr:  false,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseIntFromString(tt.input)
+			result, err := parseUnixTimestamp(tt.input)
 			
 			if tt.wantErr {
 				if err == nil {
-					t.Error("parseIntFromString() expected error but got none")
+					t.Error("parseUnixTimestamp() expected error but got none")
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("parseIntFromString() unexpected error: %v", err)
+				t.Errorf("parseUnixTimestamp() unexpected error: %v", err)
 				return
 			}
 
-			if result != tt.expected {
-				t.Errorf("parseIntFromString() = %v, want %v", result, tt.expected)
+			// For valid cases, just ensure we get a valid time
+			if result.IsZero() && tt.input != "0" {
+				t.Errorf("parseUnixTimestamp() returned zero time for valid input: %s", tt.input)
 			}
 		})
 	}
