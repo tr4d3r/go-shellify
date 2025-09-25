@@ -5,34 +5,45 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ProfileConfig represents the user's profile configuration
 type ProfileConfig struct {
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 	Shell   struct {
-		AutoDetect bool   `json:"auto_detect"`
-		Type       string `json:"type"`
-	} `json:"shell"`
+		AutoDetect bool   `json:"auto_detect" yaml:"auto_detect"`
+		Type       string `json:"type" yaml:"type"`
+	} `json:"shell" yaml:"shell"`
 	Output struct {
-		Directory string `json:"directory"`
-		Filename  string `json:"filename"`
-	} `json:"output"`
+		Directory string `json:"directory" yaml:"directory"`
+		Filename  string `json:"filename" yaml:"filename"`
+	} `json:"output" yaml:"output"`
 	Modules struct {
-		Enabled    []string `json:"enabled"`
-		Registries []string `json:"registries"`
-	} `json:"modules"`
+		Enabled    []string `json:"enabled" yaml:"enabled"`
+		Registries []string `json:"registries" yaml:"registries"`
+	} `json:"modules" yaml:"modules"`
 	Generation struct {
-		Verbose         bool   `json:"verbose"`
-		BackupExisting  bool   `json:"backup_existing"`
-		IntegrationMode string `json:"integration_mode"` // "source" or "manual"
-	} `json:"generation"`
+		Verbose         bool   `json:"verbose" yaml:"verbose"`
+		BackupExisting  bool   `json:"backup_existing" yaml:"backup_existing"`
+		IntegrationMode string `json:"integration_mode" yaml:"integration_mode"` // "source" or "manual"
+	} `json:"generation" yaml:"generation"`
 }
 
 const (
 	ConfigVersion = "1.0.0"
 	ConfigDir     = ".go-shellify"
 	ConfigFile    = "config.json"
+)
+
+// ConfigFormat represents the supported configuration file formats
+type ConfigFormat string
+
+const (
+	FormatJSON ConfigFormat = "json"
+	FormatYAML ConfigFormat = "yaml"
 )
 
 // DefaultConfig returns a new ProfileConfig with default values
@@ -42,30 +53,30 @@ func DefaultConfig() *ProfileConfig {
 	return &ProfileConfig{
 		Version: ConfigVersion,
 		Shell: struct {
-			AutoDetect bool   `json:"auto_detect"`
-			Type       string `json:"type"`
+			AutoDetect bool   `json:"auto_detect" yaml:"auto_detect"`
+			Type       string `json:"type" yaml:"type"`
 		}{
 			AutoDetect: true,
 			Type:       "",
 		},
 		Output: struct {
-			Directory string `json:"directory"`
-			Filename  string `json:"filename"`
+			Directory string `json:"directory" yaml:"directory"`
+			Filename  string `json:"filename" yaml:"filename"`
 		}{
 			Directory: filepath.Join(homeDir, ConfigDir, "generated"),
 			Filename:  "go-shellify",
 		},
 		Modules: struct {
-			Enabled    []string `json:"enabled"`
-			Registries []string `json:"registries"`
+			Enabled    []string `json:"enabled" yaml:"enabled"`
+			Registries []string `json:"registries" yaml:"registries"`
 		}{
 			Enabled:    []string{},
 			Registries: []string{},
 		},
 		Generation: struct {
-			Verbose         bool   `json:"verbose"`
-			BackupExisting  bool   `json:"backup_existing"`
-			IntegrationMode string `json:"integration_mode"`
+			Verbose         bool   `json:"verbose" yaml:"verbose"`
+			BackupExisting  bool   `json:"backup_existing" yaml:"backup_existing"`
+			IntegrationMode string `json:"integration_mode" yaml:"integration_mode"`
 		}{
 			Verbose:         false,
 			BackupExisting:  true,
@@ -113,17 +124,28 @@ func LoadFromPath(path string) (*ProfileConfig, error) {
 		}
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
-	
+
 	var config ProfileConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", err)
+	format := detectFormat(path)
+
+	switch format {
+	case FormatYAML:
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("parsing YAML config file: %w", err)
+		}
+	case FormatJSON:
+		if err := json.Unmarshal(data, &config); err != nil {
+			return nil, fmt.Errorf("parsing JSON config file: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported config format for file: %s", path)
 	}
-	
+
 	// Validate and migrate if needed
 	if err := config.validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
-	
+
 	return &config, nil
 }
 
@@ -144,17 +166,30 @@ func (c *ProfileConfig) SaveToPath(path string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	
-	// Marshal with pretty formatting
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
+
+	format := detectFormat(path)
+	var data []byte
+	var err error
+
+	switch format {
+	case FormatYAML:
+		data, err = yaml.Marshal(c)
+		if err != nil {
+			return fmt.Errorf("marshaling YAML config: %w", err)
+		}
+	case FormatJSON:
+		data, err = json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling JSON config: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported config format for file: %s", path)
 	}
-	
+
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -233,13 +268,76 @@ func (c *ProfileConfig) RemoveRegistry(registryName string) {
 	}
 }
 
-// Exists checks if a profile configuration file exists
-func Exists() bool {
-	configPath, err := GetConfigPath()
+// detectFormat determines the config format based on file extension
+func detectFormat(filename string) ConfigFormat {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".yaml", ".yml":
+		return FormatYAML
+	case ".json":
+		return FormatJSON
+	default:
+		return FormatJSON // default fallback
+	}
+}
+
+// GetConfigPathWithFormat returns the path to the user's profile configuration file with specified format
+func GetConfigPathWithFormat(format ConfigFormat) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+
+	var filename string
+	switch format {
+	case FormatYAML:
+		filename = "config.yaml"
+	case FormatJSON:
+		filename = "config.json"
+	default:
+		filename = "config.json"
+	}
+
+	return filepath.Join(homeDir, ConfigDir, filename), nil
+}
+
+// ExistsWithFormat checks if a profile configuration file exists for the specified format
+func ExistsWithFormat(format ConfigFormat) bool {
+	configPath, err := GetConfigPathWithFormat(format)
 	if err != nil {
 		return false
 	}
-	
+
 	_, err = os.Stat(configPath)
+	return err == nil
+}
+
+// FindExistingConfig searches for existing configuration files and returns the first one found
+func FindExistingConfig() (string, ConfigFormat, error) {
+	// Check for YAML first, then JSON
+	formats := []ConfigFormat{FormatYAML, FormatJSON}
+
+	for _, format := range formats {
+		if ExistsWithFormat(format) {
+			path, err := GetConfigPathWithFormat(format)
+			if err != nil {
+				continue
+			}
+			return path, format, nil
+		}
+	}
+
+	// No existing config found, return default JSON path
+	path, err := GetConfigPath()
+	if err != nil {
+		return "", FormatJSON, fmt.Errorf("getting default config path: %w", err)
+	}
+
+	return path, FormatJSON, nil
+}
+
+// Exists checks if a profile configuration file exists (checks both formats)
+func Exists() bool {
+	_, _, err := FindExistingConfig()
 	return err == nil
 }

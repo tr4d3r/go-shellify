@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "shell": {
+    "auto_detect": true,
+    "type": ""
+  },
+  "output": {
+    "directory": "~",
+    "filename": ".zshrc-test"
+  },
+  "modules": {
+    "enabled": [
+      "git-shortcuts",
+      "docker-basics",
+      "productivity-tools"
+    ],
+    "registries": [
+      "https://github.com/example/shellify-registry.git"
+    ]
+  },
+  "generation": {
+    "verbose": true,
+    "backup_existing": true,
+    "integration_mode": "source"
+  }
+}
