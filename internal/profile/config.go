@@ -339,5 +339,5 @@ func FindExistingConfig() (string, ConfigFormat, error) {
 // Exists checks if a profile configuration file exists (checks both formats)
 func Exists() bool {
 	_, _, err := FindExistingConfig()
-	return err == nil && (ExistsWithFormat(FormatJSON) || ExistsWithFormat(FormatYAML))
+	return err == nil
 }
