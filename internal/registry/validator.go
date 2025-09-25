@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -277,10 +278,17 @@ func (v *URLValidator) buildGitEndpoints(rawURL string) []string {
 	endpoints := []string{}
 	baseURL := strings.TrimSuffix(rawURL, ".git")
 	hasGitSuffix := strings.HasSuffix(rawURL, ".git")
-	
+
+	// Special handling for GitHub repositories - use API endpoint for better private repo support
+	if strings.Contains(rawURL, "github.com") {
+		if apiEndpoint := v.buildGitHubAPIEndpoint(rawURL); apiEndpoint != "" {
+			endpoints = append(endpoints, apiEndpoint)
+		}
+	}
+
 	// Try the original URL first
 	endpoints = append(endpoints, rawURL)
-	
+
 	// If original URL doesn't have .git, try with .git suffix
 	if !hasGitSuffix {
 		endpoints = append(endpoints, baseURL+".git")
@@ -312,6 +320,9 @@ func (v *URLValidator) testEndpoint(endpoint string) error {
 	// Set appropriate headers for git operations
 	req.Header.Set("User-Agent", "go-shellify/1.0")
 
+	// Add GitHub authentication if available and this is a GitHub URL
+	v.addAuthentication(req, endpoint)
+
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -330,5 +341,40 @@ func (v *URLValidator) testEndpoint(endpoint string) error {
 		return fmt.Errorf("access forbidden (403) - repository may be private")
 	default:
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+}
+
+// buildGitHubAPIEndpoint converts a GitHub repository URL to an API endpoint
+func (v *URLValidator) buildGitHubAPIEndpoint(rawURL string) string {
+	// Parse the URL to extract owner and repo
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	// Extract path components
+	pathParts := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+	if len(pathParts) < 2 {
+		return ""
+	}
+
+	owner := pathParts[0]
+	repo := strings.TrimSuffix(pathParts[1], ".git")
+
+	if owner == "" || repo == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
+}
+
+// addAuthentication adds appropriate authentication headers for supported hosts
+func (v *URLValidator) addAuthentication(req *http.Request, endpoint string) {
+	// Check if this is a GitHub URL (including API)
+	if strings.Contains(endpoint, "github.com") {
+		// Try to get GitHub token from environment
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 	}
 }

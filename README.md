@@ -47,6 +47,13 @@ A CLI client for managing and consuming shellify module registries. Discover, va
 
 ## Installation
 
+### Prerequisites
+
+- Go 1.19 or later
+- Git
+
+### Option 1: Build from Source (Recommended)
+
 ```bash
 # Clone the repository
 git clone https://github.com/griffin/go-shellify.git
@@ -55,11 +62,103 @@ cd go-shellify
 # Build the binary
 go build -o go-shellify
 
-# Install to PATH (optional)
+# Test the binary
+./go-shellify --help
+```
+
+### Option 2: Install to Go Bin Directory
+
+```bash
+# Clone and install in one step
+git clone https://github.com/griffin/go-shellify.git
+cd go-shellify
 go install
+
+# Ensure Go's bin directory is in your PATH
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# Or add to your shell profile (e.g., ~/.zshrc, ~/.bashrc):
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.zshrc
+```
+
+### Option 3: Manual Global Installation
+
+```bash
+# Build the binary
+go build -o go-shellify
+
+# Install to system PATH (requires sudo)
+sudo cp go-shellify /usr/local/bin/
+
+# Or install to user bin directory (create if needed)
+mkdir -p ~/.local/bin
+cp go-shellify ~/.local/bin/
+export PATH=$PATH:~/.local/bin
+```
+
+### Verify Installation
+
+```bash
+# Check if go-shellify is accessible
+go-shellify --version
+
+# If not found, check your PATH
+echo $PATH | grep -o '[^:]*bin[^:]*'
 ```
 
 ## Quick Start
+
+### 1. Initialize Profile Configuration
+
+```bash
+# Create a new profile configuration
+go-shellify profile init
+
+# Or create a YAML configuration
+go-shellify profile init --format yaml
+```
+
+### 2. Configure Your Profile
+
+Edit `~/.go-shellify/config.json` (or `.yaml`) to customize:
+- Output location (e.g., `~/.zshrc-test`)
+- Enabled modules
+- Shell settings
+
+Example for custom output:
+```json
+{
+  "output": {
+    "directory": "~",
+    "filename": ".zshrc-test"
+  },
+  "modules": {
+    "enabled": ["git-shortcuts", "docker-basics"]
+  }
+}
+```
+
+### 3. Generate Your Profile
+
+```bash
+# Generate shell script from configuration
+go-shellify profile generate
+
+# Generate with verbose output
+go-shellify profile generate -v
+```
+
+### 4. Use Your Generated Profile
+
+```bash
+# Source the generated profile in your shell
+source ~/.zshrc-test
+
+# Or add to your main shell config
+echo "source ~/.zshrc-test" >> ~/.zshrc
+```
+
+### Registry Management (Advanced)
 
 ```bash
 # Add a registry
@@ -68,14 +167,8 @@ go-shellify registry add https://github.com/example/shellify-registry.git
 # List available modules
 go-shellify module list
 
-# Filter modules by category
-go-shellify module list --category devops
-
 # Show module details
 go-shellify module show docker-basics
-
-# Search for modules
-go-shellify module search docker
 ```
 
 ## Commands
@@ -144,22 +237,54 @@ go-shellify module search <query>
 
 ## Configuration
 
-Configuration is stored in `~/.go-shellify/config.json`:
+Configuration supports both JSON and YAML formats, stored in `~/.go-shellify/config.json` or `~/.go-shellify/config.yaml`:
 
+**JSON Format:**
 ```json
 {
-  "registries": [
-    {
-      "url": "https://github.com/example/registry.git",
-      "name": "example-registry",
-      "last_sync": "2025-08-23T10:00:00Z"
-    }
-  ],
-  "cache_dir": "~/.go-shellify/cache",
-  "shell": "auto",
-  "platform": "auto"
+  "version": "1.0.0",
+  "shell": {
+    "auto_detect": true,
+    "type": "zsh"
+  },
+  "output": {
+    "directory": "~/.go-shellify/generated",
+    "filename": "go-shellify"
+  },
+  "modules": {
+    "enabled": ["git-shortcuts", "docker-basics"],
+    "registries": ["https://github.com/example/shellify-registry.git"]
+  },
+  "generation": {
+    "verbose": false,
+    "backup_existing": true,
+    "integration_mode": "source"
+  }
 }
 ```
+
+**YAML Format:**
+```yaml
+version: 1.0.0
+shell:
+  auto_detect: true
+  type: zsh
+output:
+  directory: ~/.go-shellify/generated
+  filename: go-shellify
+modules:
+  enabled:
+    - git-shortcuts
+    - docker-basics
+  registries:
+    - https://github.com/example/shellify-registry.git
+generation:
+  verbose: false
+  backup_existing: true
+  integration_mode: source
+```
+
+See [`examples/config/`](examples/config/) for complete configuration examples including custom output paths.
 
 ## Development
 

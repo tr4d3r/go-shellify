@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -42,15 +44,15 @@ func TestConfigValidation(t *testing.T) {
 			config: &ProfileConfig{
 				Version: "1.0.0",
 				Generation: struct {
-					Verbose         bool   `json:"verbose"`
-					BackupExisting  bool   `json:"backup_existing"`
-					IntegrationMode string `json:"integration_mode"`
+					Verbose         bool   `json:"verbose" yaml:"verbose"`
+					BackupExisting  bool   `json:"backup_existing" yaml:"backup_existing"`
+					IntegrationMode string `json:"integration_mode" yaml:"integration_mode"`
 				}{
 					IntegrationMode: "source",
 				},
 				Output: struct {
-					Directory string `json:"directory"`
-					Filename  string `json:"filename"`
+					Directory string `json:"directory" yaml:"directory"`
+					Filename  string `json:"filename" yaml:"filename"`
 				}{
 					Directory: "/tmp/test",
 					Filename:  "test",
@@ -62,9 +64,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "invalid integration mode",
 			config: &ProfileConfig{
 				Generation: struct {
-					Verbose         bool   `json:"verbose"`
-					BackupExisting  bool   `json:"backup_existing"`
-					IntegrationMode string `json:"integration_mode"`
+					Verbose         bool   `json:"verbose" yaml:"verbose"`
+					BackupExisting  bool   `json:"backup_existing" yaml:"backup_existing"`
+					IntegrationMode string `json:"integration_mode" yaml:"integration_mode"`
 				}{
 					IntegrationMode: "invalid",
 				},
@@ -245,26 +247,211 @@ func TestJSONMarshaling(t *testing.T) {
 	config := DefaultConfig()
 	config.Shell.Type = "zsh"
 	config.Modules.Enabled = []string{"git", "node"}
-	
+
 	// Test marshaling to JSON
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		t.Fatalf("Failed to marshal config: %v", err)
 	}
-	
+
 	// Test unmarshaling from JSON
 	var unmarshaledConfig ProfileConfig
 	err = json.Unmarshal(data, &unmarshaledConfig)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal config: %v", err)
 	}
-	
+
 	// Verify the unmarshaled config matches
 	if unmarshaledConfig.Shell.Type != "zsh" {
 		t.Errorf("Expected shell type 'zsh', got '%s'", unmarshaledConfig.Shell.Type)
 	}
-	
+
 	if len(unmarshaledConfig.Modules.Enabled) != 2 {
 		t.Errorf("Expected 2 enabled modules, got %d", len(unmarshaledConfig.Modules.Enabled))
+	}
+}
+
+func TestYAMLMarshaling(t *testing.T) {
+	config := DefaultConfig()
+	config.Shell.Type = "zsh"
+	config.Modules.Enabled = []string{"git", "node"}
+
+	// Test marshaling to YAML
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		t.Fatalf("Failed to marshal config to YAML: %v", err)
+	}
+
+	// Test unmarshaling from YAML
+	var unmarshaledConfig ProfileConfig
+	err = yaml.Unmarshal(data, &unmarshaledConfig)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal YAML config: %v", err)
+	}
+
+	// Verify the unmarshaled config matches
+	if unmarshaledConfig.Shell.Type != "zsh" {
+		t.Errorf("Expected shell type 'zsh', got '%s'", unmarshaledConfig.Shell.Type)
+	}
+
+	if len(unmarshaledConfig.Modules.Enabled) != 2 {
+		t.Errorf("Expected 2 enabled modules, got %d", len(unmarshaledConfig.Modules.Enabled))
+	}
+}
+
+func TestDetectFormat(t *testing.T) {
+	tests := []struct {
+		filename string
+		expected ConfigFormat
+	}{
+		{"config.json", FormatJSON},
+		{"config.yaml", FormatYAML},
+		{"config.yml", FormatYAML},
+		{"Config.JSON", FormatJSON},
+		{"Config.YAML", FormatYAML},
+		{"test.json", FormatJSON},
+		{"test.yaml", FormatYAML},
+		{"noextension", FormatJSON}, // default fallback
+		{"", FormatJSON},             // default fallback
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.filename, func(t *testing.T) {
+			result := detectFormat(tt.filename)
+			if result != tt.expected {
+				t.Errorf("detectFormat(%s) = %v, expected %v", tt.filename, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestYAMLConfigSaveLoad(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "go-shellify-yaml-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	// Create and save a config in YAML format
+	config := DefaultConfig()
+	config.Shell.Type = "fish"
+	config.Modules.Enabled = []string{"docker", "kubernetes"}
+	config.Generation.Verbose = true
+
+	err = config.SaveToPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to save YAML config: %v", err)
+	}
+
+	// Load the config back
+	loadedConfig, err := LoadFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load YAML config: %v", err)
+	}
+
+	// Verify the loaded config matches
+	if loadedConfig.Shell.Type != "fish" {
+		t.Errorf("Expected shell type 'fish', got '%s'", loadedConfig.Shell.Type)
+	}
+
+	if len(loadedConfig.Modules.Enabled) != 2 {
+		t.Errorf("Expected 2 enabled modules, got %d", len(loadedConfig.Modules.Enabled))
+	}
+
+	if loadedConfig.Modules.Enabled[0] != "docker" || loadedConfig.Modules.Enabled[1] != "kubernetes" {
+		t.Errorf("Expected modules [docker, kubernetes], got %v", loadedConfig.Modules.Enabled)
+	}
+
+	if !loadedConfig.Generation.Verbose {
+		t.Error("Expected verbose to be true")
+	}
+}
+
+func TestGetConfigPathWithFormat(t *testing.T) {
+	tests := []struct {
+		format   ConfigFormat
+		expected string
+	}{
+		{FormatJSON, "config.json"},
+		{FormatYAML, "config.yaml"},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.format), func(t *testing.T) {
+			path, err := GetConfigPathWithFormat(tt.format)
+			if err != nil {
+				t.Errorf("GetConfigPathWithFormat(%v) returned error: %v", tt.format, err)
+			}
+
+			if !filepath.IsAbs(path) {
+				t.Error("GetConfigPathWithFormat should return absolute path")
+			}
+
+			filename := filepath.Base(path)
+			if filename != tt.expected {
+				t.Errorf("Expected filename %s, got %s", tt.expected, filename)
+			}
+		})
+	}
+}
+
+func TestDualFormatCompatibility(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "go-shellify-dual-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create the same config in both formats
+	config := DefaultConfig()
+	config.Shell.Type = "bash"
+	config.Modules.Enabled = []string{"aws", "terraform"}
+	config.Output.Directory = "/custom/path"
+	config.Output.Filename = "custom-profile"
+
+	jsonPath := filepath.Join(tempDir, "config.json")
+	yamlPath := filepath.Join(tempDir, "config.yaml")
+
+	// Save in both formats
+	err = config.SaveToPath(jsonPath)
+	if err != nil {
+		t.Fatalf("Failed to save JSON config: %v", err)
+	}
+
+	err = config.SaveToPath(yamlPath)
+	if err != nil {
+		t.Fatalf("Failed to save YAML config: %v", err)
+	}
+
+	// Load both configs and compare
+	jsonConfig, err := LoadFromPath(jsonPath)
+	if err != nil {
+		t.Fatalf("Failed to load JSON config: %v", err)
+	}
+
+	yamlConfig, err := LoadFromPath(yamlPath)
+	if err != nil {
+		t.Fatalf("Failed to load YAML config: %v", err)
+	}
+
+	// Compare key fields
+	if jsonConfig.Shell.Type != yamlConfig.Shell.Type {
+		t.Errorf("Shell type mismatch: JSON=%s, YAML=%s", jsonConfig.Shell.Type, yamlConfig.Shell.Type)
+	}
+
+	if len(jsonConfig.Modules.Enabled) != len(yamlConfig.Modules.Enabled) {
+		t.Errorf("Module count mismatch: JSON=%d, YAML=%d", len(jsonConfig.Modules.Enabled), len(yamlConfig.Modules.Enabled))
+	}
+
+	if jsonConfig.Output.Directory != yamlConfig.Output.Directory {
+		t.Errorf("Output directory mismatch: JSON=%s, YAML=%s", jsonConfig.Output.Directory, yamlConfig.Output.Directory)
+	}
+
+	if jsonConfig.Output.Filename != yamlConfig.Output.Filename {
+		t.Errorf("Output filename mismatch: JSON=%s, YAML=%s", jsonConfig.Output.Filename, yamlConfig.Output.Filename)
 	}
 }
