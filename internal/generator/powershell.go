@@ -99,7 +99,7 @@ func (g *PowerShellGenerator) Generate(moduleList []registry.Module, outputPath 
 
 			switch check.Type {
 			case "command":
-				script.WriteString(fmt.Sprintf("if (Get-Command '%s' -ErrorAction SilentlyContinue) {\n", check.Command))
+				script.WriteString(fmt.Sprintf("if (Get-Command '%s' 2>$null) {\n", check.Command))
 			case "file":
 				script.WriteString(fmt.Sprintf("if (Test-Path '%s' -PathType Leaf) {\n", escapeString(check.Path, "powershell")))
 			case "directory":
